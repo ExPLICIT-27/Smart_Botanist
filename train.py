@@ -41,15 +41,11 @@ def get_data_loaders(data_dir, batch_size=32, validation_split=0.2):
     
     return train_loader, val_loader, full_dataset.classes
 
-def build_model(num_classes, arch="shufflenet"):
-    if arch == "shufflenet":
-        model = models.shufflenet_v2_x0_5(weights='DEFAULT')
-        model.fc = nn.Linear(model.fc.in_features, num_classes)
-    else:
-        # Default to MobileNetV2 with smaller width to stay under 1.5MB 
-        # (must train from scratch because ImageNet weights don't fit width 0.35)
-        model = models.mobilenet_v2(width_mult=0.35)
-        model.classifier[1] = nn.Linear(model.last_channel, num_classes)
+def build_model(num_classes):
+    # MobileNetV2 with smaller width to stay under 1.5MB 
+    # (must train from scratch because ImageNet weights don't fit width 0.35)
+    model = models.mobilenet_v2(width_mult=0.35)
+    model.classifier[1] = nn.Linear(model.last_channel, num_classes)
         
     return model
 
@@ -129,7 +125,6 @@ def main():
     parser.add_argument('--dataset', type=str, required=True, help="Path to the dataset directory")
     parser.add_argument('--epochs', type=int, default=30, help="Number of epochs to train")
     parser.add_argument('--batch_size', type=int, default=32, help="Batch size")
-    parser.add_argument('--arch', type=str, default="mobilenet", choices=['mobilenet', 'shufflenet'], help="Architecture to use")
     parser.add_argument('--output', type=str, default="flower_mobilenet.pt", help="Path to save the final model")
     
     args = parser.parse_args()
@@ -145,20 +140,18 @@ def main():
     train_loader, val_loader, classes = get_data_loaders(args.dataset, args.batch_size)
     print(f"Found {len(classes)} classes: {classes}")
     
-    print(f"Building {args.arch} model...")
-    model = build_model(len(classes), arch=args.arch)
+    print("Building mobilenet model...")
+    model = build_model(len(classes))
     
     print("Starting training...")
     model = train_model(model, train_loader, val_loader, args.epochs, device)
     
-    # Save the final model (full model, not just state_dict, easier for ONNX export later)
-    # Actually, saving state_dict is safer, but returning the model is fine
-    # Let's save the model with standard architecture so we can load it easily in quantize.py
+    # Save the final model
     torch.save({
         'state_dict': model.state_dict(),
         'num_classes': len(classes),
         'classes': classes,
-        'arch': args.arch
+        'arch': 'mobilenet'
     }, args.output)
     print(f"Model saved to {args.output}")
 
